@@ -1,0 +1,24 @@
+# Build output, local models, captures and diagnostics
+.build/
+.swiftpm/
+work/
+outputs/
+Models/
+model/
+*.gguf
+*.safetensors
+*.mov
+*.mp4
+*.dmg
+*.app/
+*.log
+*.part
+
+# Credentials and machine settings
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+.DS_Store

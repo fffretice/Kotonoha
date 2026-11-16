@@ -1,0 +1,8 @@
+Kotonoha
+Copyright 2026 fffretice
+
+Licensed under the Apache License, Version 2.0.
+
+This project uses llama.cpp, licensed separately under the MIT License.
+See THIRD_PARTY.md and licenses/llama.cpp-LICENSE.
+No model weights, game artwork, game audio, or screen recordings are included.
