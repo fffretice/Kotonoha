@@ -1,11 +1,12 @@
-## 改动
+## Change
 
-描述具体问题和修改后的行为。
+Describe the concrete problem and the resulting behavior.
 
-## 验证
+## Validation
 
-- [ ] 已运行 `./scripts/build.sh`
-- [ ] 已运行 `./scripts/test.sh`
-- [ ] 涉及界面、捕获或模型时，说明人工验证情况
+- [ ] Ran `./scripts/build.sh`
+- [ ] Ran `./scripts/test.sh`
+- [ ] Ran `python3 scripts/check-comments.py`
+- [ ] Described manual validation for UI, capture, or model changes
 
-## 已知限制
+## Known limitations

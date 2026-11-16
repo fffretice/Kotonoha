@@ -15,5 +15,7 @@ jobs:
         run: ./scripts/build.sh
       - name: Run core regression checks
         run: ./scripts/test.sh
+      - name: Check comment language
+        run: python3 scripts/check-comments.py
       - name: Verify app signature
         run: codesign --verify --deep --strict 'outputs/言叶 Kotonoha.app'

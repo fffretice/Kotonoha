@@ -2,7 +2,7 @@
 set -euo pipefail
 cd "${0:A:h:h}"
 APP="$PWD/outputs/言叶 Kotonoha.app"
-STAGE="$PWD/work/dmg-root"
+STAGE="$PWD/work/dmg-root-$(date +%s)"
 VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$APP/Contents/Info.plist")
 DMG="$PWD/outputs/Kotonoha-${VERSION}-AppleSilicon.dmg"
 mkdir -p "$STAGE"
@@ -10,8 +10,8 @@ mkdir -p "$STAGE"
 if [[ -d "$STAGE/言叶 Kotonoha.app" ]]; then mv "$STAGE/言叶 Kotonoha.app" "$PWD/work/dmg-previous-$(date +%s).app"; fi
 ditto "$APP" "$STAGE/言叶 Kotonoha.app"
 [[ -L "$STAGE/Applications" ]] || ln -s /Applications "$STAGE/Applications"
-cp Resources/使用说明.txt "$STAGE/先读我.txt"
-cp THIRD_PARTY.md "$STAGE/第三方组件许可.md"
+cp Resources/UserGuide.txt "$STAGE/Read me.txt"
+cp THIRD_PARTY.md "$STAGE/THIRD_PARTY.md"
 cp LICENSE NOTICE "$STAGE/"
 python3 - <<'PY'
 from pathlib import Path

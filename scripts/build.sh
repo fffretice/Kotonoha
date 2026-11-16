@@ -25,7 +25,7 @@ APP="$STAGING/言叶 Kotonoha.app"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp work/build/Kotonoha "$APP/Contents/MacOS/Kotonoha"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
-cp Resources/使用说明.txt "$APP/Contents/Resources/使用说明.txt"
+cp Resources/UserGuide.txt "$APP/Contents/Resources/UserGuide.txt"
 cp LICENSE NOTICE THIRD_PARTY.md "$APP/Contents/Resources/"
 if [[ -d work/runtime ]]; then
   mkdir -p "$APP/Contents/Resources/Runtime"

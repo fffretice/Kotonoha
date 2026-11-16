@@ -1,0 +1,63 @@
+Kotonoha 0.7.3
+Local Japanese-to-Simplified-Chinese screen translation
+Apple Silicon / macOS 14 or later
+
+INSTALLATION
+Drag the app into Applications. The app interface currently uses Simplified Chinese; this guide describes its controls in English.
+The distribution contains no model weights. Choose your own llama.cpp-compatible GGUF file and load it before translating.
+The app has been tested with Qwen3 models in non-thinking mode. Other models require compatibility and quality checks.
+The current backend loads local GGUF files; it does not directly connect to Ollama, cloud APIs, or ChatGPT accounts.
+Keep the selected model file in place. Select it again if you move it.
+
+CAPTURE
+Full display: select a display in the system picker.
+Region: draw a region, then select its display in the system picker.
+Window: select the target window directly.
+A preview refreshes after selection. Reselect a window after its size or resolution changes; an app restart is not required.
+If translation was active, it resumes after successful reselection.
+
+APPEARANCE AND DIALOGUE
+Automatic background blending samples the area around the source text once, then freezes the cover's color and layout for that translation.
+Adjust the shared font size in preferences. Long text wraps instead of shrinking to a different font size.
+Dark and light cover styles are also available.
+When the same dialogue page adds characters or rows, completed translations remain visible at their original position. A completed continuation updates the cover while preserving its top-left anchor and color. A new dialogue page clears the old content.
+Keeping a translated prefix visible does not treat it as the complete translation of the longer source.
+
+TIMING
+Automatic mode detects growing text. Use typewriter mode for character-by-character dialogue, or subtitle mode for text that appears all at once.
+Keep paragraph grouping enabled for wrapped dialogue unless independent line translation is needed.
+OCR work counts toward the sampling interval; the app does not add a fixed delay after every recognition pass.
+The displayed model-generation time excludes OCR and the wait for text to settle. It is not the full screen-to-overlay delay.
+Use the glossary to specify character names and recurring terminology.
+
+CONTROLS
+Control + Option + T: start or pause
+Control + Option + R: select a region again
+Control + Option + H: reveal the source or restore the overlay
+Closing the main window leaves the menu-bar app running. Quit the app to end sharing and unload the model.
+Unloading releases model resources after the model process exits. It does not delete the GGUF file. macOS may retain reclaimable file caches.
+
+PRIVACY
+Screen recognition and translation run on your Mac. Screen images and source text are not uploaded.
+The model subprocess listens only on a random loopback port and uses a fresh access key for each launch.
+Conversation history is kept in memory unless you explicitly export it. Runtime logs use the system temporary directory.
+Optional diagnostic commands can write test reports and test images.
+
+LIMITATIONS
+OCR can misread decorative, outlined, or low-resolution text. Model translations can also be wrong.
+Model latency depends on the GPU workload. This preview cannot guarantee that every rapidly changing subtitle is translated in time.
+Reselect a moved window to verify overlay alignment.
+Overlay exclusion for full-display capture has been tested on macOS 15.0.1; other systems still need validation.
+The app accepts model files up to 20 GiB, including the approximately 18.6 GB Qwen3-30B-A3B Q4_K_M file. Runtime context and compute buffers need additional memory; the file-size limit is not a process-memory cap.
+This distribution is arm64-only and does not support Intel Macs.
+
+SIGNING AND SHARING
+This preview has an ad-hoc development signature and is not Developer ID signed or notarized.
+Gatekeeper may block the first launch on another Mac. Verify the source and follow macOS's own prompts.
+Apple guidance: https://support.apple.com/guide/mac-help/mh40616/mac
+No scripts that disable system security checks are included.
+
+LICENSES
+The project's source is Apache-2.0; see LICENSE and NOTICE.
+llama.cpp is MIT-licensed; its license is included with the bundled runtime.
+Follow the license of the model you obtain separately.

@@ -1,19 +1,19 @@
-<!-- 请删除个人信息、路径和密钥，不要上传无权公开的游戏录屏。 -->
+<!-- Remove personal data, local paths, and credentials. Do not upload game recordings you do not have permission to publish. -->
 
-**遇到的问题**
+**Problem**
 
-**预期表现**
+**Expected behavior**
 
-**复现步骤**
+**Steps to reproduce**
 1.
 2.
 
-**环境**
-- macOS 版本：
-- Mac 芯片 / 内存：
-- App 版本：
-- 模型名称与量化：
-- 全屏 / 框选 / 窗口选择：
-- 自动识别 / 实时字幕 / 逐字对白：
+**Environment**
+- macOS version:
+- Mac chip / RAM:
+- App version:
+- Model name and quantization:
+- Full display / region / window capture:
+- Automatic / subtitle / typewriter timing:
 
-**不含隐私的补充信息**
+**Additional information without private data**
