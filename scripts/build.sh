@@ -1,7 +1,7 @@
 #!/bin/zsh
 set -euo pipefail
 cd "${0:A:h:h}"
-mkdir -p work/build work/clang-cache
+mkdir -p work/build work/clang-cache outputs
 # Some CLT upgrades leave a duplicate SwiftBridging module map. Apply a build-only
 # overlay in that case; never modify the installed toolchain.
 python3 - <<'PYBUILD'
