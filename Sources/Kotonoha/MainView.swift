@@ -25,7 +25,7 @@ struct MainView: View {
                     Text("画面和日文不上传。\n翻译记录只保留在本次会话。").font(.caption).foregroundStyle(.secondary).lineSpacing(4)
                     Divider()
                     Text("⌃⌥T  开始 / 暂停\n⌃⌥R  重新框选\n⌃⌥H  显示 / 隐藏译文").font(.system(size: 11)).foregroundStyle(.secondary).lineSpacing(6)
-                    Text("言叶 · 0.8.0").font(.caption2).foregroundStyle(.tertiary)
+                    Text("言叶 · 0.8.1").font(.caption2).foregroundStyle(.tertiary)
                 }
             }.padding(24).frame(width: 225).background(Color.white.opacity(0.025))
             Rectangle().fill(Color.white.opacity(0.07)).frame(width: 1)

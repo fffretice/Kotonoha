@@ -4,11 +4,11 @@ Local Japanese-to-Simplified-Chinese screen translation for visual novels on mac
 
 Kotonoha uses Apple Vision for OCR and llama.cpp for local GGUF inference. **Model weights are not included: bring your own compatible model.**
 
-Current preview: **0.8.0** · Apple Silicon · macOS 14 or later
+Current preview: **0.8.1** · Apple Silicon · macOS 14 or later
 
 ## Download and get started
 
-1. Download `Kotonoha-0.8.0-AppleSilicon.dmg` from [Releases](https://github.com/fffretice/Kotonoha/releases) and drag the app into Applications.
+1. Download `Kotonoha-0.8.1-AppleSilicon.dmg` from [Releases](https://github.com/fffretice/Kotonoha/releases) and drag the app into Applications.
 2. Open the app, choose a local GGUF model, and load it.
 3. Select a display, draw a region, or choose a window. Confirm the shared content in the macOS system picker.
 4. Check the preview and start translation.
@@ -30,7 +30,7 @@ Background blending uses sampled-color covers, **not generative inpainting**. Co
 
 ## Models and memory
 
-The app has been tested with Qwen3 in non-thinking mode, including 8B Q4_K_M and 30B-A3B Q4_K_M. The app also recognizes Sakura, GalTransl and HY-MT filenames and uses specialized plain-text prompts rather than forcing their output into JSON. Keep the family name when renaming files. Quality and latency depend on the model, quantization, context, and competing GPU workloads. Parameter count alone does not predict performance.
+The app has been tested with Qwen3 in non-thinking mode, including 8B Q4_K_M and 30B-A3B Q4_K_M. The app also recognizes Sakura, GalTransl and HY-MT filenames and uses specialized plain-text prompts rather than forcing their output into JSON. Keep the family name when renaming files. Prior dialogue for Sakura/GalTransl uses separate conversation turns, and context is scoped to nearby regions. Recognized speaker labels and fixed playback controls retain the game appearance. Rejected native replies get one history-free retry before a region backs off. Quality and latency depend on the model, quantization, context, and competing GPU workloads. Parameter count alone does not predict performance.
 
 - The current backend loads local GGUF files. It does not connect directly to Ollama servers, cloud APIs, or ChatGPT accounts.
 - The model-file limit is 20 GiB. Context and compute buffers require additional memory; this is not a process-memory cap.
@@ -73,7 +73,7 @@ Source builds use an ad-hoc signature. A Developer ID signed and notarized distr
 
 ## Tests
 
-`./scripts/test.sh` runs 54 core checks without a model or screen-recording permission. `python3 scripts/check-comments.py` checks source comments for CJK ideographs. GitHub Actions builds the Apple Silicon app and runs both checks without downloading a model.
+`./scripts/test.sh` runs 63 core checks without a model or screen-recording permission. `python3 scripts/check-comments.py` checks source comments for CJK ideographs. GitHub Actions builds the Apple Silicon app and runs both checks without downloading a model.
 
 The app executable also accepts these native diagnostic flags. They need an interactive macOS desktop; inference checks need a local GGUF model configured in the app:
 
@@ -84,6 +84,8 @@ The app executable also accepts these native diagnostic flags. They need an inte
 - `--screen-test --display-filter` and `--resize-test`: capture mapping, overlay exclusion, and reselection.
 
 `--dialogue-append-test`, `--presentation-test`, `--visual-text-test`, and `--recording-replay-test` are optional development checks that require separately supplied local recording fixtures. Those private frames are not distributed.
+
+`--continuous-dialogue-test` runs a Sakura session across twelve complete and typewriter pages without resetting dialogue memory, including speaker labels and a persistent playback control. It checks actual painted position and obstruction, oversized covers and same-source dropouts. The synthetic replay is not a real-game coverage benchmark.
 
 `--profile-timing-test` is an optional local-model check for Sakura, GalTransl and Hy-MT2, with Qwen3-8B as a structured-output control. It covers completed dialogue, typewriter append retention, independent/scrolling chat bubbles, obsolete-request cancellation and per-region failure isolation. Set `KOTONOHA_MODELS_DIR` to the directory containing the tested GGUF filenames (see `ProfileDiagnostics.swift`); the default is `~/Documents/Codex/model`. A local recording frame is used when available. Models and recording frames are not distributed.
 

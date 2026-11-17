@@ -39,6 +39,7 @@ struct OverlayAppearance: Equatable {
     func clear() { view?.clearPresentation(); window?.orderOut(nil) }
     var isVisible: Bool { window?.isVisible ?? false }
     var presentationFonts: [CGFloat] { view?.presentationFonts ?? [] }
+    var presentationSources: [String] { view?.presentationSources ?? [] }
     var presentationRects: [CGRect] { view?.presentationRects ?? [] }
     var ignoresMouse: Bool { window?.ignoresMouseEvents ?? false }
     func renderedImage() -> CGImage? {
@@ -64,6 +65,7 @@ private final class OverlayView: NSView {
         var font: CGFloat
     }
     var presentationFonts: [CGFloat] { paints.map(\.font) }
+    var presentationSources: [String] { paints.map(\.source) }
     var presentationRects: [CGRect] { paints.map(\.rect) }
     private var paints: [Paint] = []
     private var recent: [Paint] = []

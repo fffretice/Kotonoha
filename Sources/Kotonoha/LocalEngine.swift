@@ -90,12 +90,24 @@ struct AppFailure: LocalizedError {
             for source in sources {
                 try Task.checkCancellation()
                 let profile = TranslationProfile.detect(path:modelPath)
-                let body: [String:Any] = ["messages":profile.messages(source:source,context:context,glossary:glossary),
-                    "temperature":0.1,"top_p":0.9,"max_tokens":min(1400,max(128,source.count*3)),
-                    "stream":false,"reasoning_budget":0,"chat_template_kwargs":["enable_thinking":false]]
-                let text = TextTools.cleanTranslation(try await complete(body))
-                guard TranslationProfile.isUsable(text,source:source) else { throw AppFailure("模型未能返回中文译文，已跳过本次结果") }
-                results.append(text)
+                var accepted: String?
+                for attempt in 0..<(context.isEmpty ? 1 : 2) {
+                    let history = attempt == 0 ? context : []
+                    let body: [String:Any] = ["messages":profile.messages(source:source,context:history,glossary:glossary),
+                        "temperature":0.1,"top_p":0.9,"max_tokens":min(1400,max(48,source.count*3)),
+                        "stream":false,"reasoning_budget":0,"chat_template_kwargs":["enable_thinking":false]]
+                    do {
+                        let text = TextTools.cleanTranslation(try await complete(body,maxCharacters:TranslationProfile.maximumCharacters(source:source)))
+                        guard TranslationProfile.isUsable(text,source:source) else { throw AppFailure("模型未能返回当前句的完整中文译文") }
+                        accepted = text; break
+                    } catch {
+                        try Task.checkCancellation()
+                        if context.isEmpty || attempt > 0 { throw error }
+                        // A contextual failure gets one clean retry, without poisoning the next request.
+                    }
+                }
+                guard let accepted else { throw AppFailure("模型未能返回当前句的完整中文译文") }
+                results.append(accepted)
             }
             return results
         }
@@ -121,7 +133,7 @@ struct AppFailure: LocalizedError {
               decoded.translations.allSatisfy({ !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else { throw AppFailure("模型没有返回完整译文，请重试") }
         return decoded.translations
     }
-    private func complete(_ body: [String:Any]) async throws -> String {
+    private func complete(_ body: [String:Any], maxCharacters: Int? = nil) async throws -> String {
         var request = URLRequest(url: endpoint.appendingPathComponent("v1/chat/completions")); request.httpMethod = "POST"; request.timeoutInterval = 75
         request.setValue("application/json", forHTTPHeaderField: "Content-Type"); request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         // Streaming transport releases an obsolete server slot promptly on cancellation.
@@ -139,6 +151,7 @@ struct AppFailure: LocalizedError {
             guard let data = payload.data(using:.utf8), let event = try JSONSerialization.jsonObject(with:data) as? [String:Any] else { continue }
             for choice in event["choices"] as? [[String:Any]] ?? [] {
                 if let delta = choice["delta"] as? [String:Any], let text = delta["content"] as? String { content += text }
+                if let maxCharacters, content.count > maxCharacters { throw AppFailure("模型输出包含多余内容，正在重新翻译当前句") }
                 if let reason = choice["finish_reason"] as? String { finish = reason }
             }
         }

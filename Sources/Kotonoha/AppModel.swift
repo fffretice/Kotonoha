@@ -47,7 +47,8 @@ struct HistoryEntry: Identifiable {
     private var translationTask: Task<Void, Never>?
     private var readiness = RegionReadiness()
     private var cache = TranslationCache()
-    private var context: [(String, String)] = []
+    private struct DialogueMemory { var source: String; var translation: String; var rect: CGRect }
+    private var context: [DialogueMemory] = []
     private var generation = UUID()
     private var currentLines: [RecognizedLine] = []
     private struct VisualTranslation {
@@ -195,7 +196,8 @@ struct HistoryEntry: Identifiable {
     private func invalidateTranslation() { cache.clear(); context = []; visualTranslations = []; shownBlocks = []; confirmedAt = [:]; readiness = RegionReadiness(); retry(); overlay.clear() }
     private func blocks(for lines: [RecognizedLine]) -> [TranslationBlock] {
         let canvas = region?.rect.size ?? CGSize(width: 1000, height: 1000)
-        return TextLayout.groups(lines, canvas: canvas, separateLines: separateLines).compactMap { group in
+        let dialogue = lines.filter { !DialogueText.isLabelOrControl($0,among:lines) }
+        return TextLayout.groups(dialogue, canvas: canvas, separateLines: separateLines).compactMap { group in
             guard let first = group.first else { return nil }
             return TranslationBlock(source: group.map(\.text).joined(separator: "\n"), translated: "",
                 rect: group.dropFirst().reduce(first.rect) { $0.union($1.rect) })
@@ -254,7 +256,11 @@ struct HistoryEntry: Identifiable {
         translationTask = Task {
             let began = ProcessInfo.processInfo.systemUptime
             do {
-                let results = try await engine.translate(batch.map(\.source), context:context, glossary:glossary)
+                let memory = context.filter { record in
+                    let rect = batch[0].rect
+                    return record.rect.intersects(rect) || abs(record.rect.midY-rect.midY) < max(record.rect.height,rect.height)*2
+                }.map { ($0.source,$0.translation) }
+                let results = try await engine.translate(batch.map(\.source), context:memory, glossary:glossary)
                 guard !Task.isCancelled, running, run == generation else { return }
                 let seconds = ProcessInfo.processInfo.systemUptime-began
                 for (i,pair) in zip(batch,results).enumerated() {
@@ -274,8 +280,8 @@ struct HistoryEntry: Identifiable {
                     let stillPresent = blocks(for:currentLines).contains { OCRText.key($0.source) == OCRText.key(block.source) }
                     if !superseded && stillPresent {
                         if OCRText.key(block.source).count > 6 {
-                            context.removeAll { OCRText.isExtension($0.0,block.source) }
-                            context.append((block.source,text))
+                            context.removeAll { OCRText.isExtension($0.source,block.source) }
+                            context.append(DialogueMemory(source:block.source,translation:text,rect:block.rect))
                         }
                         history.insert(HistoryEntry(source:block.source,translation:text,seconds:seconds),at:0)
                     }

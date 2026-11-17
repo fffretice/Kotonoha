@@ -19,6 +19,11 @@ import Carbon
     var hotkeys: [EventHotKeyRef] = []
     var eventHandler: EventHandlerRef?
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if CommandLine.arguments.contains("--continuous-dialogue-test") {
+            NSApp.setActivationPolicy(.prohibited)
+            Task { await Diagnostics.continuousDialogueTest(model:model); NSApp.terminate(nil) }
+            return
+        }
         if CommandLine.arguments.contains("--profile-timing-test") {
             NSApp.setActivationPolicy(.prohibited)
             Task { await Diagnostics.profileTimingTest(model:model); NSApp.terminate(nil) }

@@ -1,4 +1,4 @@
-Kotonoha 0.8.0
+Kotonoha 0.8.1
 Local Japanese-to-Simplified-Chinese screen translation
 Apple Silicon / macOS 14 or later
 
@@ -65,3 +65,6 @@ Follow the license of the model you obtain separately.
 
 Overlay timing
 In automatic mode, high-confidence complete sentences can translate immediately after OCR. Completed typewriter sentences use a short quiet interval; unfinished clauses retain the longer wait. Existing translations stay visible while the same page grows. A replaced page clears old text, and obsolete requests are cancelled. New dialogue is prioritized over static captions; a failed region temporarily backs off so other bubbles can translate.
+
+Continuous dialogue reliability
+Sakura and GalTransl receive prior translations as separate conversation turns. Context is limited to nearby dialogue regions, so persistent captions do not become part of the next dialogue. Obvious speaker labels remain in the game typography, and recognized fixed playback controls are skipped. Native model replies are checked for length and instruction leakage before caching; a contextual failure gets one retry without history.
