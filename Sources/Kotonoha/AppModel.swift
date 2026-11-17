@@ -59,6 +59,12 @@ struct HistoryEntry: Identifiable {
     private var lastPreviewTime: Double = 0
     private var latestImage: CGImage?
     private var retryAfter: TimeInterval = 0
+    private var activeModelPath = ""
+    private var firstSeen: [String:Double] = [:]
+    private var failedUntil: [String:Double] = [:]
+    private var inFlight: [TranslationBlock] = []
+    private var obsoleteSince: Double?
+
     var appearance: OverlayAppearance { OverlayAppearance(style: style, opacity: opacity, fontSize: fontSize, padding: padding) }
     var coveredSourceKeys: Set<String> { Set(shownBlocks.map { OCRText.key($0.source) }) }
     var regionLabel: String { region?.description ?? "尚未选择" }
@@ -173,7 +179,7 @@ struct HistoryEntry: Identifiable {
         selectionTask?.cancel(); selectionTask = nil; choosingScreen = false
         captureTask?.cancel(); captureTask = nil; translationTask?.cancel(); translationTask = nil
         capture.stop()
-        shownBlocks = []; confirmedAt = [:]
+        shownBlocks = []; confirmedAt = [:]; firstSeen = [:]; failedUntil = [:]; inFlight = []; obsoleteSince = nil
         overlay.clear(); status = "已暂停 · 原画面已恢复"
     }
     func retryFromUI() {
@@ -183,7 +189,7 @@ struct HistoryEntry: Identifiable {
     }
     func retry() {
         translationTask?.cancel(); translationTask = nil
-        retryAfter = 0; cache.clear(); error = nil
+        retryAfter = 0; cache.clear(); error = nil; failedUntil = [:]; inFlight = []; obsoleteSince = nil
     }
     func resetContext() { context = []; cache.clear(); retry(); status = "对话记忆已清空" }
     private func invalidateTranslation() { cache.clear(); context = []; visualTranslations = []; shownBlocks = []; confirmedAt = [:]; readiness = RegionReadiness(); retry(); overlay.clear() }
@@ -197,23 +203,52 @@ struct HistoryEntry: Identifiable {
     }
     private func processObservation(_ lines: [RecognizedLine], image: CGImage, run: UUID) {
         let now = ProcessInfo.processInfo.systemUptime
+        if activeModelPath != engine.modelPath {
+            activeModelPath = engine.modelPath; invalidateTranslation(); firstSeen = [:]
+        }
         let latestSource = TextTools.signature(lines)
         if source != latestSource { source = latestSource }
         let current = blocks(for: lines)
-        let candidates = current.map { RecognizedLine(text:$0.source,rect:$0.rect,confidence:1) }
+        let candidates = current.map { block in
+            let confidence = lines.filter { $0.rect.intersects(block.rect) }.map(\.confidence).min() ?? 0
+            return RecognizedLine(text:block.source,rect:block.rect,confidence:confidence)
+        }
         let ready = readiness.observe(candidates, at:now, delay:stabilityDelay, mode:timingMode)
+        for block in current where firstSeen[cacheKey(block.source)] == nil { firstSeen[cacheKey(block.source)] = now }
+        // Only an actually replaced page cancels work. Growth and chat scrolling can still use the result.
+        if translationTask != nil {
+            let useful = current.contains { live in inFlight.contains { old in
+                OCRText.key(old.source) == OCRText.key(live.source) ||
+                DialogueContinuity.isAppending(previous:old.source,current:live.source) ||
+                DialogueContinuity.isAppending(previous:live.source,current:old.source) ||
+                OCRText.mayReuseTranslation(old.source,live.source)
+            }}
+            if useful { obsoleteSince = nil }
+            else if let since = obsoleteSince, now-since >= (current.isEmpty ? 0.8 : 0.15) {
+                translationTask?.cancel(); translationTask = nil; inFlight = []; obsoleteSince = nil
+            } else if obsoleteSince == nil { obsoleteSince = now }
+        }
         renderCurrent()
         guard !current.isEmpty else { status = "等待日文对话…"; return }
         // One request finishes even if another OCR region changes; only the latest missing text is queued.
         guard translationTask == nil else { if status != "正在本地翻译…" { status = "正在本地翻译…" }; return }
         guard now >= retryAfter else { return }
-        let pending = current.enumerated().filter { ready[$0.offset] && cache[cacheKey($0.element.source)] == nil }
-            .map(\.element).sorted { $0.source.count > $1.source.count }
+        let pending = current.enumerated().filter {
+            ready[$0.offset] && cache[cacheKey($0.element.source)] == nil && now >= (failedUntil[cacheKey($0.element.source)] ?? 0)
+        }.map(\.element).sorted {
+            // Dialogue takes precedence over short labels; newest bubbles precede static chapter text.
+            let aBody = $0.source.count > 8, bBody = $1.source.count > 8
+            if aBody != bBody { return aBody }
+            let a = firstSeen[cacheKey($0.source)] ?? 0, b = firstSeen[cacheKey($1.source)] ?? 0
+            if abs(a-b) > 0.05 { return a > b }
+            return $0.rect.midY < $1.rect.midY
+        }
         guard !pending.isEmpty else {
             status = current.allSatisfy { cache[cacheKey($0.source)] != nil } ? "译文已覆盖 · 等待下一句" : "正在识别新文字…"
             return
         }
-        let batch = Array(pending.prefix((pending.first?.source.count ?? 0) > 8 ? 1 : 3))
+        let batch = Array(pending.prefix(1))
+        inFlight = batch; obsoleteSince = nil
         let evidence = batch.map { SubtitleFingerprint(image:image,rect:$0.rect) }
         status = "正在本地翻译…"
         translationTask = Task {
@@ -236,7 +271,8 @@ struct HistoryEntry: Identifiable {
                         shownBlocks.removeAll { isAppended($0,to:completed) }
                         if !shownBlocks.contains(where: { $0.rect.intersects(completed.rect) }) { shownBlocks.append(completed) }
                     }
-                    if !superseded {
+                    let stillPresent = blocks(for:currentLines).contains { OCRText.key($0.source) == OCRText.key(block.source) }
+                    if !superseded && stillPresent {
                         if OCRText.key(block.source).count > 6 {
                             context.removeAll { OCRText.isExtension($0.0,block.source) }
                             context.append((block.source,text))
@@ -248,13 +284,14 @@ struct HistoryEntry: Identifiable {
                 if context.count > 4 { context.removeFirst(context.count-4) }
                 if history.count > 100 { history.removeLast(history.count-100) }
                 latency = String(format:"%.2f 秒",seconds)
-                error = nil; translationTask = nil
+                error = nil; translationTask = nil; inFlight = []; obsoleteSince = nil
                 // Draw only translations whose source still matches the current screen.
                 renderCurrent()
                 status = "译文已更新 · 继续识别字幕"
             } catch {
                 guard !Task.isCancelled, running, run == generation else { return }
-                translationTask = nil; retryAfter = ProcessInfo.processInfo.systemUptime+1
+                translationTask = nil; inFlight = []; obsoleteSince = nil
+                for block in batch { failedUntil[cacheKey(block.source)] = ProcessInfo.processInfo.systemUptime+5 }
                 self.error = error.localizedDescription; status = "翻译暂未完成，稍后重试"
             }
         }
@@ -282,7 +319,8 @@ struct HistoryEntry: Identifiable {
             var b = block; b.translated = translated; return b
         }
         for previous in shownBlocks {
-            if visible.contains(where: { $0.rect.intersects(previous.rect) }) { continue }
+            // A scrolling chat bubble is painted at its current position, never at both positions.
+            if visible.contains(where: { $0.rect.intersects(previous.rect) || OCRText.key($0.source) == OCRText.key(previous.source) }) { continue }
             let nearest = current.filter { $0.rect.intersects(previous.rect) }.max { a,b in
                 a.rect.intersection(previous.rect).width < b.rect.intersection(previous.rect).width
             }

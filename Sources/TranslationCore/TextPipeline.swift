@@ -132,13 +132,30 @@ public enum OCRText {
         guard !a.isEmpty, !b.isEmpty else { return false }
         if a.hasPrefix(b) || b.hasPrefix(a) { return true }
         let x = Array(a.prefix(500)), y = Array(b.prefix(500))
-        var previous = Array(0...y.count)
-        for (i,c) in x.enumerated() {
-            var next = [i+1] + Array(repeating: 0, count:y.count)
-            for (j,d) in y.enumerated() { next[j+1] = min(next[j]+1, previous[j+1]+1, previous[j] + (c == d ? 0 : 1)) }
+        return withinEdits(x,y,limit:Int(Double(max(x.count,y.count))*0.35))
+    }
+    /// Banded distance bounds OCR matching work when long dialogue pages keep growing.
+    static func withinEdits(_ x: [Character], _ y: [Character], limit: Int) -> Bool {
+        guard abs(x.count-y.count) <= limit else { return false }
+        let infinity = limit+1
+        var previous = Array(repeating:infinity,count:y.count+1)
+        for j in 0...min(y.count,limit) { previous[j] = j }
+        if x.isEmpty { return y.count <= limit }
+        for i in 1...x.count {
+            var next = Array(repeating:infinity,count:y.count+1)
+            if i <= limit { next[0] = i }
+            let lower = max(1,i-limit), upper = min(y.count,i+limit)
+            var best = next[0]
+            if lower <= upper {
+                for j in lower...upper {
+                    next[j] = min(next[j-1]+1,previous[j]+1,previous[j-1]+(x[i-1] == y[j-1] ? 0:1))
+                    best = min(best,next[j])
+                }
+            }
+            if best > limit { return false }
             previous = next
         }
-        return Double(previous[y.count]) / Double(max(x.count,y.count)) <= 0.35
+        return previous[y.count] <= limit
     }
 }
 
@@ -153,13 +170,7 @@ public enum DialogueContinuity {
         let tolerance=min(3,max(2,a.count/20))
         for length in max(1,a.count-tolerance)...min(b.count-1,a.count+tolerance) {
             let prefix=Array(b.prefix(length))
-            var row=Array(0...prefix.count)
-            for (i,c) in a.enumerated() {
-                var next=[i+1]+Array(repeating:0,count:prefix.count)
-                for (j,d) in prefix.enumerated() { next[j+1]=min(next[j]+1,row[j+1]+1,row[j]+(c == d ? 0:1)) }
-                row=next
-            }
-            if row[prefix.count] <= tolerance { return true }
+            if OCRText.withinEdits(a,prefix,limit:tolerance) { return true }
         }
         return false
     }
@@ -207,8 +218,10 @@ public struct RegionReadiness {
             used.insert(index)
             let track = tracks[index]
             let typing = mode == .typewriter || (mode == .automatic && track.typing)
+            // A confidently recognized complete sentence can start before another expensive OCR pass.
+            if mode != .typewriter && delay <= 0.12 && line.confidence >= 0.85 && key.count >= 8 && TextReadiness.endsSentence(line.text) { return true }
             if typing {
-                return !key.isEmpty && track.samples >= 2 && (time-track.quiet >= max(0.30,delay) || time-track.lastGrowth >= 1.0)
+                return !key.isEmpty && track.samples >= 2 && (time-track.quiet >= max(TextReadiness.endsSentence(line.text) ? 0.12 : 0.30,delay) || time-track.lastGrowth >= 1.0)
             }
             return !key.isEmpty && track.samples >= 2 && (time-track.quiet >= delay || time-track.first >= max(0.45, delay))
         }
@@ -237,5 +250,14 @@ public enum OverlayContinuity {
             if x.count >= y.count { i+=1 }; if y.count >= x.count { j+=1 }
         }
         return edits + (x.count-i) + (y.count-j) <= 1
+    }
+}
+
+/// A terminal mark can shorten the quiet interval without guessing an unfinished clause.
+public enum TextReadiness {
+    public static func endsSentence(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn:"」』）)\"")))
+        guard let last = trimmed.last else { return false }
+        return "。！？!?".contains(last)
     }
 }

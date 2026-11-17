@@ -1,11 +1,12 @@
-Kotonoha 0.7.3
+Kotonoha 0.8.0
 Local Japanese-to-Simplified-Chinese screen translation
 Apple Silicon / macOS 14 or later
 
 INSTALLATION
 Drag the app into Applications. The app interface currently uses Simplified Chinese; this guide describes its controls in English.
 The distribution contains no model weights. Choose your own llama.cpp-compatible GGUF file and load it before translating.
-The app has been tested with Qwen3 models in non-thinking mode. Other models require compatibility and quality checks.
+Qwen3 uses structured JSON output. Sakura, GalTransl and HY-MT models are recognized by their filenames and use specialized plain-text translation prompts. Keep these family names when renaming model files. Other models require compatibility and quality checks.
+Specialized prompts reduce format overhead but do not eliminate translation errors. In particular, small models can confuse Japanese causative and passive character roles.
 The current backend loads local GGUF files; it does not directly connect to Ollama, cloud APIs, or ChatGPT accounts.
 Keep the selected model file in place. Select it again if you move it.
 
@@ -61,3 +62,6 @@ LICENSES
 The project's source is Apache-2.0; see LICENSE and NOTICE.
 llama.cpp is MIT-licensed; its license is included with the bundled runtime.
 Follow the license of the model you obtain separately.
+
+Overlay timing
+In automatic mode, high-confidence complete sentences can translate immediately after OCR. Completed typewriter sentences use a short quiet interval; unfinished clauses retain the longer wait. Existing translations stay visible while the same page grows. A replaced page clears old text, and obsolete requests are cancelled. New dialogue is prioritized over static captions; a failed region temporarily backs off so other bubbles can translate.

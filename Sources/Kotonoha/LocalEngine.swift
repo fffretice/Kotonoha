@@ -84,6 +84,21 @@ struct AppFailure: LocalizedError {
     }
     func translate(_ sources: [String], context: [(String, String)], glossary: String) async throws -> [String] {
         guard ready, process?.isRunning == true else { ready = false; throw AppFailure("本地模型尚未就绪，请先加载模型") }
+        guard sources.joined().count <= 1800 else { throw AppFailure("这次识别文字较多，请缩小框选区域后重试（每次最多 1800 字）") }
+        if TranslationProfile.detect(path:modelPath).usesPlainText {
+            var results: [String] = []
+            for source in sources {
+                try Task.checkCancellation()
+                let profile = TranslationProfile.detect(path:modelPath)
+                let body: [String:Any] = ["messages":profile.messages(source:source,context:context,glossary:glossary),
+                    "temperature":0.1,"top_p":0.9,"max_tokens":min(1400,max(128,source.count*3)),
+                    "stream":false,"reasoning_budget":0,"chat_template_kwargs":["enable_thinking":false]]
+                let text = TextTools.cleanTranslation(try await complete(body))
+                guard TranslationProfile.isUsable(text,source:source) else { throw AppFailure("模型未能返回中文译文，已跳过本次结果") }
+                results.append(text)
+            }
+            return results
+        }
         let system = """
         你是日语影视与视觉小说的简体中文译者。只翻译 texts 数组，按原顺序返回 JSON 对象 {"translations":["译文1","译文2"]}，条目数必须完全一致，不解释、不续写、不输出思考。
         必须译完整句的全部分句；输入里的换行通常只是屏幕排版，要连起来理解，不能逐行各译各的。保留疑问、否定、转折、过去时、委婉或吐槽的语气，使用自然中文对话，避免逐词硬译。不要猜测未显示的后半句。邀约「〜ませんか」要译为自然的「要不要……？」；中文疑问句不要混用「要不要……吧」，并使用合适的中文标点。
@@ -94,27 +109,47 @@ struct AppFailure: LocalizedError {
         なら、これはひとりごとです。→那你就当我在自言自语吧。
         食べたことを、ふと思い出してしまって。→忽然想起了那次吃东西的事。注意这是回忆过去，不能译成打算去吃；具体人物和食物以本句为准。
         """
-        guard sources.joined().count <= 1800 else { throw AppFailure("这次识别文字较多，请缩小框选区域后重试（每次最多 1800 字）") }
         let previous = context.suffix(3).map { ["ja": String($0.0.prefix(300)), "zh": String($0.1.prefix(300))] }
         let user: [String: Any] = ["texts": sources, "previous_dialogue": previous, "glossary": String(glossary.prefix(1600))]
         let userData = try JSONSerialization.data(withJSONObject: user, options: [.sortedKeys])
         let schema: [String: Any] = ["type": "object", "properties": ["translations": ["type": "array", "items": ["type": "string"], "minItems": sources.count, "maxItems": sources.count]], "required": ["translations"], "additionalProperties": false]
         let body: [String: Any] = ["messages": [["role": "system", "content": system], ["role": "user", "content": String(decoding: userData, as: UTF8.self)]], "temperature": 0.1, "top_p": 0.9, "max_tokens": min(1400, max(160, sources.joined().count * 3)), "stream": false, "reasoning_budget": 0, "chat_template_kwargs": ["enable_thinking": false], "response_format": ["type": "json_schema", "json_schema": ["name": "translation", "strict": true, "schema": schema]]]
-        var request = URLRequest(url: endpoint.appendingPathComponent("v1/chat/completions")); request.httpMethod = "POST"; request.timeoutInterval = 75
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type"); request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (data, response) = try await URLSession.shared.data(for: request)
-        try Task.checkCancellation()
-        if let trace = ProcessInfo.processInfo.environment["KOTONOHA_TRACE_REPLY"] { try? data.write(to:URL(fileURLWithPath:trace)) }
-        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw AppFailure("翻译引擎返回错误，请重试或查看日志") }
-        struct Reply: Decodable { struct Choice: Decodable { struct Message: Decodable { var content: String? }; var message: Message; var finish_reason: String? }; var choices: [Choice] }
-        let reply = try JSONDecoder().decode(Reply.self, from: data)
-        guard let choice = reply.choices.first, let content = choice.message.content, choice.finish_reason != "length" else { throw AppFailure("译文过长，请缩小框选范围后重试") }
+        let content = try await complete(body)
         struct Translations: Decodable { let translations: [String] }
         let clean = TextTools.cleanTranslation(content)
         guard let decoded = try? JSONDecoder().decode(Translations.self, from: Data(clean.utf8)), decoded.translations.count == sources.count,
               decoded.translations.allSatisfy({ !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else { throw AppFailure("模型没有返回完整译文，请重试") }
         return decoded.translations
     }
+    private func complete(_ body: [String:Any]) async throws -> String {
+        var request = URLRequest(url: endpoint.appendingPathComponent("v1/chat/completions")); request.httpMethod = "POST"; request.timeoutInterval = 75
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type"); request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        // Streaming transport releases an obsolete server slot promptly on cancellation.
+        // Accumulate privately; the overlay still receives only a complete translation.
+        var streamed = body; streamed["stream"] = true
+        request.httpBody = try JSONSerialization.data(withJSONObject:streamed)
+        let (bytes,response) = try await URLSession.shared.bytes(for:request)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw AppFailure("翻译引擎返回错误，请重试或查看日志") }
+        var content = "", finish: String?
+        for try await line in bytes.lines {
+            try Task.checkCancellation()
+            guard line.hasPrefix("data:") else { continue }
+            let payload = line.dropFirst(5).trimmingCharacters(in:.whitespaces)
+            if payload == "[DONE]" { break }
+            guard let data = payload.data(using:.utf8), let event = try JSONSerialization.jsonObject(with:data) as? [String:Any] else { continue }
+            for choice in event["choices"] as? [[String:Any]] ?? [] {
+                if let delta = choice["delta"] as? [String:Any], let text = delta["content"] as? String { content += text }
+                if let reason = choice["finish_reason"] as? String { finish = reason }
+            }
+        }
+        try Task.checkCancellation()
+        if let trace = ProcessInfo.processInfo.environment["KOTONOHA_TRACE_REPLY"] {
+            let reply: [String:Any] = ["choices":[["message":["content":content],"finish_reason":finish ?? "interrupted"]]]
+            if let data = try? JSONSerialization.data(withJSONObject:reply) { try? data.write(to:URL(fileURLWithPath:trace)) }
+        }
+        guard let finish, finish != "length", !content.isEmpty else { throw AppFailure("模型输出未完成，已跳过本次结果") }
+        return content
+    }
+
     func showLog() { NSWorkspace.shared.open(FileManager.default.temporaryDirectory.appendingPathComponent("Kotonoha-engine.log")) }
 }
